@@ -1,7 +1,6 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import pandas_ta as ta
 import matplotlib.pyplot as plt
 from datetime import datetime
 
@@ -9,22 +8,41 @@ from datetime import datetime
 st.set_page_config(page_title="AlgoTrader Pro", layout="wide", page_icon="📈")
 
 # Custom CSS for a cleaner look
-st.markdown("""
-    <style>
-    .main { background-color: #0e1117; }
-    .stMetric { background-color: #161b22; border-radius: 10px; padding: 15px; }
-    </style>
-    """, unsafe_allow_html=True)
+st.markdown("""<style>
+.main { background-color: #0e1117; }
+.stMetric { background-color: #161b22; border-radius: 10px; padding: 15px; }
+</style>""", unsafe_allow_html=True)
 
 st.title("📈 AlgoTrader Pro: EMA Crossover Strategy")
 st.sidebar.header("🕹️ Strategy Controls")
 
 # --- USER INPUTS ---
 ticker = st.sidebar.text_input("Stock Ticker (e.g., RELIANCE.NS, TSLA, BTC-USD)", "RELIANCE.NS")
-start_capital = st.sidebar.number_input("Starting Capital ($)", value=10000)
-rr_ratio = st.sidebar.slider("Risk/Reward Ratio (Target)", 1.0, 5.0, 2.0)
+start_capital = st.sidebar.number_input("Starting Capital ($)", value=10000)r_ratio = st.sidebar.slider("Risk/Reward Ratio (Target)", 1.0, 5.0, 2.0)
 ema_short_val = st.sidebar.number_input("Short EMA Period", value=50)
 ema_long_val = st.sidebar.number_input("Long EMA Period", value=200)
+
+def calculate_ema(data, length):
+    """Calculate EMA using pandas ewm"""
+    return data.ewm(span=length, adjust=False).mean()
+
+def calculate_rsi(data, length=14):
+    """Calculate RSI without pandas_ta"""
+    delta = data.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=length).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=length).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+def calculate_atr(high, low, close, length=14):
+    """Calculate ATR without pandas_ta"""
+    tr1 = high - low
+    tr2 = abs(high - close.shift())
+    tr3 = abs(low - close.shift())
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    atr = tr.rolling(window=length).mean()
+    return atr
 
 @st.cache_data
 def get_data(symbol, short_ema, long_ema):
@@ -32,10 +50,10 @@ def get_data(symbol, short_ema, long_ema):
         data = yf.download(symbol, period="5y", interval="1d", progress=False)
         if data.empty: return None
         # Indicators
-        data['EMA_S'] = ta.ema(data['Close'], length=short_ema)
-        data['EMA_L'] = ta.ema(data['Close'], length=long_ema)
-        data['RSI'] = ta.rsi(data['Close'], length=14)
-        data['ATR'] = ta.atr(data['High'], data['Low'], data['Close'], length=14)
+        data['EMA_S'] = calculate_ema(data['Close'], short_ema)
+        data['EMA_L'] = calculate_ema(data['Close'], long_ema)
+        data['RSI'] = calculate_rsi(data['Close'], length=14)
+        data['ATR'] = calculate_atr(data['High'], data['Low'], data['Close'], length=14)
         return data.dropna()
     except:
         return None
@@ -106,8 +124,8 @@ if df is not None:
         st.header(f"Strategy Performance: {roi:.2f}% ROI")
         
         fig, ax = plt.subplots(figsize=(10, 3))
-        ax.plot(history_df['Date'], history_df['Balance'], color="#00FFAA")
-        ax.fill_between(history_df['Date'], history_df['Balance'], start_capital, alpha=0.1, color="#00FFAA")
+        ax.plot(history_df['Date'], history_df['Balance'], color="blue")
+        ax.fill_between(history_df['Date'], history_df['Balance'], start_capital, alpha=0.1, color="blue")
         st.pyplot(fig)
         
         st.subheader("Historical Trade Log")
